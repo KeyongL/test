@@ -252,7 +252,11 @@ def survey_interface():
     questions = get_questions()
     total_questions = len(questions)
     
-    st.title("📚 AI智能体赋能调研")
+    # 从配置读取标题，如果没有则使用默认值
+    app_title = "📚 AI智能体赋能教学调研"
+    if CONFIG and 'app_config' in CONFIG and 'title' in CONFIG['app_config']:
+        app_title = f"📚 {CONFIG['app_config']['title']}"
+    st.title(app_title)
     
     if st.session_state.submitted:
         st.success("✅ 提交成功，感谢您的填写！")
