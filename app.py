@@ -608,11 +608,302 @@ def data_viewer():
         st.error(f"加载数据时出错: {str(e)}")
         st.info("如果数据库文件不存在，请先提交一份问卷")
 
+# 数据分析报告生成
+def generate_analysis_report(df):
+    """生成数据分析报告"""
+    questions = get_questions()
+    report = []
+    
+    # 总览
+    report.append("=" * 60)
+    report.append("📊 问卷数据分析报告")
+    report.append("=" * 60)
+    report.append(f"\n总样本数：{len(df)} 份")
+    report.append(f"生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+    
+    # 分类统计
+    teaching_questions = []
+    paper_questions = []
+    grant_questions = []
+    other_questions = []
+    
+    for q in questions:
+        q_text = q['text'].lower()
+        if '教学' in q_text:
+            teaching_questions.append(q)
+        elif '论文' in q_text or '写作' in q_text:
+            paper_questions.append(q)
+        elif '课题' in q_text or '申报' in q_text:
+            grant_questions.append(q)
+        else:
+            other_questions.append(q)
+    
+    # 教学方向分析
+    if teaching_questions:
+        report.append("\n" + "=" * 60)
+        report.append("📚 教学方向分析")
+        report.append("=" * 60 + "\n")
+        
+        for q in teaching_questions:
+            if q['id'] not in df.columns:
+                continue
+            report.append(f"\n{q['text']}")
+            report.append("-" * 60)
+            
+            if q['type'] == 'single':
+                counts = df[q['id']].value_counts()
+                for option, count in counts.items():
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}人 ({percentage:.1f}%)")
+            elif q['type'] == 'multi':
+                option_counts = {}
+                for _, row in df.iterrows():
+                    answer = row[q['id']]
+                    if isinstance(answer, list):
+                        for opt in answer:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                    elif isinstance(answer, str) and answer:
+                        options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                        for opt in options:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                
+                sorted_options = sorted(option_counts.items(), key=lambda x: x[1], reverse=True)
+                for option, count in sorted_options:
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}次 ({percentage:.1f}%)")
+    
+    # 论文/写作方向分析
+    if paper_questions:
+        report.append("\n\n" + "=" * 60)
+        report.append("📝 论文/写作方向分析")
+        report.append("=" * 60 + "\n")
+        
+        for q in paper_questions:
+            if q['id'] not in df.columns:
+                continue
+            report.append(f"\n{q['text']}")
+            report.append("-" * 60)
+            
+            if q['type'] == 'single':
+                counts = df[q['id']].value_counts()
+                for option, count in counts.items():
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}人 ({percentage:.1f}%)")
+            elif q['type'] == 'multi':
+                option_counts = {}
+                for _, row in df.iterrows():
+                    answer = row[q['id']]
+                    if isinstance(answer, list):
+                        for opt in answer:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                    elif isinstance(answer, str) and answer:
+                        options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                        for opt in options:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                
+                sorted_options = sorted(option_counts.items(), key=lambda x: x[1], reverse=True)
+                for option, count in sorted_options:
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}次 ({percentage:.1f}%)")
+    
+    # 课题申报方向分析
+    if grant_questions:
+        report.append("\n\n" + "=" * 60)
+        report.append("📋 课题申报方向分析")
+        report.append("=" * 60 + "\n")
+        
+        for q in grant_questions:
+            if q['id'] not in df.columns:
+                continue
+            report.append(f"\n{q['text']}")
+            report.append("-" * 60)
+            
+            if q['type'] == 'single':
+                counts = df[q['id']].value_counts()
+                for option, count in counts.items():
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}人 ({percentage:.1f}%)")
+            elif q['type'] == 'multi':
+                option_counts = {}
+                for _, row in df.iterrows():
+                    answer = row[q['id']]
+                    if isinstance(answer, list):
+                        for opt in answer:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                    elif isinstance(answer, str) and answer:
+                        options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                        for opt in options:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                
+                sorted_options = sorted(option_counts.items(), key=lambda x: x[1], reverse=True)
+                for option, count in sorted_options:
+                    percentage = (count / len(df)) * 100
+                    report.append(f"  {option}: {count}次 ({percentage:.1f}%)")
+    
+    # 关键决策问题
+    decision_questions = [q for q in questions if '优先' in q['text'] or '关键' in q['text']]
+    if decision_questions:
+        report.append("\n\n" + "=" * 60)
+        report.append("🎯 关键决策分析")
+        report.append("=" * 60 + "\n")
+        
+        for q in decision_questions:
+            if q['id'] not in df.columns:
+                continue
+            report.append(f"\n{q['text']}")
+            report.append("-" * 60)
+            
+            counts = df[q['id']].value_counts()
+            for option, count in counts.items():
+                percentage = (count / len(df)) * 100
+                report.append(f"  {option}: {count}人 ({percentage:.1f}%)")
+    
+    report.append("\n" + "=" * 60)
+    report.append("报告生成完成")
+    report.append("=" * 60)
+    
+    return "\n".join(report)
+
+# 数据分析报告页面
+def analysis_report():
+    """数据分析报告页面"""
+    st.title("📈 数据分析报告")
+    
+    # 密码保护
+    password = st.sidebar.text_input("请输入访问密码", type="password", key="analysis_password")
+    
+    correct_password = "admin123"
+    if CONFIG and 'app_config' in CONFIG and 'password' in CONFIG['app_config']:
+        correct_password = CONFIG['app_config']['password']
+        
+    if password != correct_password:
+        st.warning("请输入正确的密码以查看分析报告")
+        return
+    
+    # 加载数据
+    try:
+        df = load_from_database()
+        
+        if df.empty:
+            st.info("暂无数据，请等待问卷提交")
+            return
+        
+        # 生成报告
+        report_text = generate_analysis_report(df)
+        
+        # 显示报告
+        st.subheader("📊 完整分析报告")
+        st.text_area("分析报告", report_text, height=600, disabled=False, key="report_display")
+        
+        # 下载报告
+        st.download_button(
+            label="📥 下载分析报告（TXT）",
+            data=report_text,
+            file_name=f"survey_analysis_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+            mime="text/plain"
+        )
+        
+        # 简化版可视化展示
+        st.divider()
+        st.subheader("📊 核心发现速览")
+        
+        questions = get_questions()
+        
+        # 教学方向偏好
+        teaching_key = None
+        for q in questions:
+            if '教学' in q['text'] and '期待' in q['text'] and q['type'] == 'multi':
+                teaching_key = q['id']
+                break
+        
+        if teaching_key and teaching_key in df.columns:
+            st.write("**📚 教学方向偏好**")
+            option_counts = {}
+            for _, row in df.iterrows():
+                answer = row[teaching_key]
+                if isinstance(answer, list):
+                    for opt in answer:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+                elif isinstance(answer, str) and answer:
+                    options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                    for opt in options:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+            
+            if option_counts:
+                counts_series = pd.Series(option_counts).sort_values(ascending=False).head(5)
+                st.bar_chart(counts_series)
+        
+        # 论文方向偏好
+        paper_key = None
+        for q in questions:
+            if '论文' in q['text'] and '期待' in q['text'] and q['type'] == 'multi':
+                paper_key = q['id']
+                break
+        
+        if paper_key and paper_key in df.columns:
+            st.write("**📝 论文/写作方向偏好**")
+            option_counts = {}
+            for _, row in df.iterrows():
+                answer = row[paper_key]
+                if isinstance(answer, list):
+                    for opt in answer:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+                elif isinstance(answer, str) and answer:
+                    options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                    for opt in options:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+            
+            if option_counts:
+                counts_series = pd.Series(option_counts).sort_values(ascending=False).head(5)
+                st.bar_chart(counts_series)
+        
+        # 课题申报方向偏好
+        grant_key = None
+        for q in questions:
+            if '课题' in q['text'] and '期待' in q['text'] and q['type'] == 'multi':
+                grant_key = q['id']
+                break
+        
+        if grant_key and grant_key in df.columns:
+            st.write("**📋 课题申报方向偏好**")
+            option_counts = {}
+            for _, row in df.iterrows():
+                answer = row[grant_key]
+                if isinstance(answer, list):
+                    for opt in answer:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+                elif isinstance(answer, str) and answer:
+                    options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                    for opt in options:
+                        option_counts[opt] = option_counts.get(opt, 0) + 1
+            
+            if option_counts:
+                counts_series = pd.Series(option_counts).sort_values(ascending=False).head(5)
+                st.bar_chart(counts_series)
+        
+        # 优先级决策
+        priority_key = None
+        for q in questions:
+            if '优先' in q['text'] and q['type'] == 'single':
+                priority_key = q['id']
+                break
+        
+        if priority_key and priority_key in df.columns:
+            st.write("**🎯 开发优先级决策**")
+            counts = df[priority_key].value_counts()
+            st.bar_chart(counts)
+        
+    except Exception as e:
+        st.error(f"生成报告时出错: {str(e)}")
+        st.info("如果数据库文件不存在，请先提交一份问卷")
+
 # 主应用逻辑
 # 侧边栏导航
-page = st.sidebar.selectbox("选择页面", ["📝 填写问卷", "📊 查看数据"])
+page = st.sidebar.selectbox("选择页面", ["📝 填写问卷", "📊 查看数据", "📈 数据分析报告"])
 
 if page == "📝 填写问卷":
     survey_interface()
-else:
+elif page == "📊 查看数据":
     data_viewer()
+else:
+    analysis_report()
