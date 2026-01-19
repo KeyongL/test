@@ -1,0 +1,8 @@
+.streamlit/
+__pycache__/
+*.pyc
+.venv/
+venv/
+env/
+survey_data.db
+survey_data.db-journal

@@ -2,6 +2,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 import os
+import sqlite3
+import json
 
 # 设置页面配置
 st.set_page_config(
@@ -9,6 +11,9 @@ st.set_page_config(
     page_icon="📚",
     layout="centered"
 )
+
+# 数据库文件路径
+DB_FILE = "survey_data.db"
 
 # 定义问卷题目
 def get_questions():
@@ -167,13 +172,24 @@ def get_questions():
         }
     ]
 
-# 确保数据文件存在
-DATA_FILE = "survey_data.csv"
-if not os.path.exists(DATA_FILE):
-    # 定义包含所有问题ID的列
-    columns = ["submit_time"] + [q["id"] for q in get_questions()]
-    df = pd.DataFrame(columns=columns)
-    df.to_csv(DATA_FILE, index=False, encoding="utf-8-sig")
+# 初始化数据库
+def init_database():
+    """初始化SQLite数据库，创建表结构"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # 创建表，使用 JSON 存储答案（更灵活）
+    c.execute('''CREATE TABLE IF NOT EXISTS survey_responses
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT,
+                  submit_time TEXT NOT NULL,
+                  answers TEXT NOT NULL,
+                  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+    
+    conn.commit()
+    conn.close()
+
+# 初始化数据库
+init_database()
 
 # 初始化Session State
 def init_session_state():
@@ -185,6 +201,51 @@ def init_session_state():
         st.session_state.submitted = False
 
 init_session_state()
+
+# 保存数据到数据库
+def save_to_database(answers, submit_time):
+    """将问卷答案保存到SQLite数据库"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    # 将答案字典转换为JSON字符串存储
+    answers_json = json.dumps(answers, ensure_ascii=False)
+    
+    c.execute('''INSERT INTO survey_responses (submit_time, answers)
+                 VALUES (?, ?)''', (submit_time, answers_json))
+    
+    conn.commit()
+    conn.close()
+
+# 从数据库读取所有数据
+def load_from_database():
+    """从数据库读取所有问卷数据"""
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    c.execute('''SELECT id, submit_time, answers, created_at 
+                 FROM survey_responses 
+                 ORDER BY created_at DESC''')
+    
+    rows = c.fetchall()
+    conn.close()
+    
+    # 转换为DataFrame格式
+    data = []
+    questions = get_questions()
+    question_ids = ["submit_time"] + [q["id"] for q in questions]
+    
+    for row in rows:
+        record = {"id": row[0], "submit_time": row[1], "created_at": row[3]}
+        answers = json.loads(row[2])
+        record.update(answers)
+        data.append(record)
+    
+    if data:
+        df = pd.DataFrame(data)
+        return df
+    else:
+        return pd.DataFrame(columns=question_ids)
 
 # 问卷主体
 def survey_interface():
@@ -270,26 +331,104 @@ def survey_interface():
                             # 记录当前时间
                             submit_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                             
-                            # 准备数据记录
-                            record = {
-                                "submit_time": submit_time
-                            }
-                            
-                            # 添加所有问题的答案
+                            # 准备答案数据（保持原始格式）
+                            answers = {}
                             for q in questions:
                                 if q['type'] == 'single':
-                                    record[q['id']] = st.session_state.answers[q['id']]
+                                    answers[q['id']] = st.session_state.answers[q['id']]
                                 elif q['type'] == 'multi':
-                                    # 将多选答案转换为字符串，用分号分隔
-                                    record[q['id']] = "; ".join(st.session_state.answers[q['id']])
+                                    # 多选题保存为列表
+                                    answers[q['id']] = st.session_state.answers[q['id']]
                             
-                            # 保存数据到CSV
-                            new_record = pd.DataFrame([record])
-                            new_record.to_csv(DATA_FILE, mode="a", header=False, index=False, encoding="utf-8-sig")
+                            # 添加提交时间到答案中
+                            answers['submit_time'] = submit_time
+                            
+                            # 保存到数据库
+                            save_to_database(answers, submit_time)
                             
                             # 标记为已提交
                             st.session_state.submitted = True
                             st.rerun()
 
+# 数据查看页面
+def data_viewer():
+    """数据查看和管理页面"""
+    st.title("📊 调研数据查看")
+    
+    # 密码保护（从配置读取）
+    password = st.sidebar.text_input("请输入访问密码", type="password")
+    
+    # 默认密码
+    correct_password = "admin123"
+    if CONFIG and 'app_config' in CONFIG and 'password' in CONFIG['app_config']:
+        correct_password = CONFIG['app_config']['password']
+        
+    if password != correct_password:
+        st.warning("请输入正确的密码以查看数据")
+        return
+    
+    # 加载数据
+    try:
+        df = load_from_database()
+        
+        if df.empty:
+            st.info("暂无数据，请等待问卷提交")
+            return
+        
+        # 统计信息
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("总提交数", len(df))
+        with col2:
+            if 'submit_time' in df.columns:
+                latest = df['submit_time'].iloc[0] if len(df) > 0 else "无"
+                st.metric("最新提交", latest[:10] if isinstance(latest, str) else latest)
+        with col3:
+            st.metric("数据库文件", DB_FILE)
+        
+        st.divider()
+        
+        # 数据表格
+        st.subheader("📋 详细数据")
+        
+        # 导出功能
+        col1, col2 = st.columns([1, 4])
+        with col1:
+            csv = df.to_csv(index=False, encoding="utf-8-sig")
+            st.download_button(
+                label="📥 导出CSV",
+                data=csv,
+                file_name=f"survey_data_{datetime.now().strftime('%Y%m%d')}.csv",
+                mime="text/csv"
+            )
+        
+        # 显示数据表
+        st.dataframe(df, use_container_width=True, height=400)
+        
+        # 简单的统计分析
+        st.divider()
+        st.subheader("📈 快速统计")
+        
+        # 显示单选题的分布
+        questions = get_questions()
+        single_questions = [q for q in questions if q['type'] == 'single']
+        
+        for q in single_questions[:3]:  # 只显示前3个单选题的统计
+            if q['id'] in df.columns:
+                st.write(f"**{q['text']}**")
+                counts = df[q['id']].value_counts()
+                st.bar_chart(counts)
+                st.write("")
+        
+    except Exception as e:
+        st.error(f"加载数据时出错: {str(e)}")
+        st.info("如果数据库文件不存在，请先提交一份问卷")
+
 # 主应用逻辑
-survey_interface()
+# 侧边栏导航
+page = st.sidebar.selectbox("选择页面", ["📝 填写问卷", "📊 查看数据"])
+
+if page == "📝 填写问卷":
+    survey_interface()
+else:
+    data_viewer()
