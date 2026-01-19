@@ -478,16 +478,56 @@ def data_viewer():
         st.divider()
         st.subheader("📈 快速统计")
         
-        # 显示单选题的分布
+        # 显示所有单选题和多选题的统计
         questions = get_questions()
-        single_questions = [q for q in questions if q['type'] == 'single']
         
-        for q in single_questions[:3]:  # 只显示前3个单选题的统计
-            if q['id'] in df.columns:
-                st.write(f"**{q['text']}**")
+        for q in questions:
+            if q['id'] not in df.columns:
+                continue
+                
+            st.write(f"**{q['text']}**")
+            
+            # 处理单选题
+            if q['type'] == 'single':
                 counts = df[q['id']].value_counts()
-                st.bar_chart(counts)
-                st.write("")
+                if len(counts) > 0:
+                    # 显示为柱状图
+                    st.bar_chart(counts)
+                    # 也显示详细数值
+                    count_df = pd.DataFrame({
+                        '选项': counts.index,
+                        '数量': counts.values
+                    })
+                    st.dataframe(count_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("暂无数据")
+            
+            # 处理多选题（统计每个选项被选择的次数）
+            elif q['type'] == 'multi':
+                option_counts = {}
+                for _, row in df.iterrows():
+                    answer = row[q['id']]
+                    if isinstance(answer, list):
+                        for opt in answer:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                    elif isinstance(answer, str) and answer:
+                        # 处理可能是字符串格式的多选答案
+                        options = [opt.strip() for opt in answer.split(';') if opt.strip()]
+                        for opt in options:
+                            option_counts[opt] = option_counts.get(opt, 0) + 1
+                
+                if option_counts:
+                    counts_series = pd.Series(option_counts).sort_values(ascending=False)
+                    st.bar_chart(counts_series)
+                    count_df = pd.DataFrame({
+                        '选项': counts_series.index,
+                        '选择次数': counts_series.values
+                    })
+                    st.dataframe(count_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("暂无数据")
+            
+            st.write("---")
         
     except Exception as e:
         st.error(f"加载数据时出错: {str(e)}")
