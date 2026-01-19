@@ -260,7 +260,7 @@ def load_from_database():
     # 转换为DataFrame格式
     data = []
     questions = get_questions()
-    question_ids = ["submit_time"] + [q["id"] for q in questions]
+    question_ids = ["id", "submit_time"] + [q["id"] for q in questions]
     
     for row in rows:
         record = {"id": row[0], "submit_time": row[1], "created_at": row[3]}
@@ -273,6 +273,28 @@ def load_from_database():
         return df
     else:
         return pd.DataFrame(columns=question_ids)
+
+# 从数据库删除数据
+def delete_from_database(record_ids):
+    """从数据库删除指定的记录"""
+    if not record_ids:
+        return False
+    
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+    try:
+        # 构建删除SQL，支持批量删除
+        placeholders = ','.join(['?'] * len(record_ids))
+        c.execute(f'DELETE FROM survey_responses WHERE id IN ({placeholders})', record_ids)
+        conn.commit()
+        deleted_count = c.rowcount
+        conn.close()
+        return deleted_count > 0
+    except Exception as e:
+        conn.rollback()
+        conn.close()
+        raise e
 
 # 处理“其它”选项的辅助方法
 def is_other_option(option):
@@ -460,8 +482,8 @@ def data_viewer():
         # 数据表格
         st.subheader("📋 详细数据")
         
-        # 导出功能
-        col1, col2 = st.columns([1, 4])
+        # 导出和删除功能
+        col1, col2, col3 = st.columns([1, 1, 3])
         with col1:
             csv = df.to_csv(index=False, encoding="utf-8-sig")
             st.download_button(
@@ -471,8 +493,61 @@ def data_viewer():
                 mime="text/csv"
             )
         
-        # 显示数据表
-        st.dataframe(df, use_container_width=True, height=400)
+        # 删除功能
+        with col2:
+            if 'delete_mode' not in st.session_state:
+                st.session_state.delete_mode = False
+            
+            if st.button("🗑️ 删除模式" if not st.session_state.delete_mode else "✅ 完成删除"):
+                st.session_state.delete_mode = not st.session_state.delete_mode
+                st.rerun()
+        
+        # 显示数据表（带选择功能）
+        if st.session_state.delete_mode:
+            st.info("🔴 删除模式已开启：勾选要删除的记录，然后点击下方删除按钮")
+            # 添加多选框
+            if 'selected_rows' not in st.session_state:
+                st.session_state.selected_rows = []
+            
+            # 显示复选框列表
+            selected_ids = []
+            for idx, row in df.iterrows():
+                checkbox_key = f"delete_checkbox_{row['id']}"
+                if st.checkbox(
+                    f"ID: {row['id']} | {row.get('submit_time', 'N/A')}",
+                    key=checkbox_key,
+                    value=row['id'] in st.session_state.selected_rows
+                ):
+                    if row['id'] not in st.session_state.selected_rows:
+                        st.session_state.selected_rows.append(row['id'])
+                    selected_ids.append(row['id'])
+                else:
+                    if row['id'] in st.session_state.selected_rows:
+                        st.session_state.selected_rows.remove(row['id'])
+            
+            # 显示要删除的记录预览
+            if st.session_state.selected_rows:
+                st.warning(f"已选择 {len(st.session_state.selected_rows)} 条记录准备删除")
+                
+                # 删除按钮
+                if st.button("⚠️ 确认删除选中记录", type="primary"):
+                    try:
+                        deleted = delete_from_database(st.session_state.selected_rows)
+                        if deleted:
+                            st.success(f"成功删除 {len(st.session_state.selected_rows)} 条记录")
+                            st.session_state.selected_rows = []
+                            st.session_state.delete_mode = False
+                            st.rerun()
+                        else:
+                            st.error("删除失败")
+                    except Exception as e:
+                        st.error(f"删除时出错: {str(e)}")
+            
+            # 显示完整数据表（只读）
+            st.dataframe(df.drop(columns=['id']), use_container_width=True, height=300)
+        else:
+            # 正常模式：显示数据表
+            st.dataframe(df.drop(columns=['id']), use_container_width=True, height=400)
         
         # 简单的统计分析
         st.divider()
