@@ -222,6 +222,8 @@ def init_session_state():
         st.session_state.current_question = 0
     if "answers" not in st.session_state:
         st.session_state.answers = {}
+    if "other_inputs" not in st.session_state:
+        st.session_state.other_inputs = {}
     if "submitted" not in st.session_state:
         st.session_state.submitted = False
 
@@ -272,6 +274,30 @@ def load_from_database():
     else:
         return pd.DataFrame(columns=question_ids)
 
+# 处理“其它”选项的辅助方法
+def is_other_option(option):
+    if not isinstance(option, str):
+        return False
+    return "______" in option or option.strip().startswith("其它")
+
+def normalize_answer(question, raw_answer):
+    """将包含“其它”选项的答案替换为填写内容"""
+    if question['type'] == 'single':
+        if is_other_option(raw_answer):
+            other_text = st.session_state.other_inputs.get(question['id'], "").strip()
+            return f"其它：{other_text}" if other_text else "其它："
+        return raw_answer
+    if question['type'] == 'multi':
+        normalized = []
+        for option in raw_answer:
+            if is_other_option(option):
+                other_text = st.session_state.other_inputs.get(question['id'], "").strip()
+                normalized.append(f"其它：{other_text}" if other_text else "其它：")
+            else:
+                normalized.append(option)
+        return normalized
+    return raw_answer
+
 # 问卷主体
 def survey_interface():
     questions = get_questions()
@@ -316,6 +342,13 @@ def survey_interface():
                     horizontal=False
                 )
                 st.session_state.answers[q['id']] = answer
+                if is_other_option(answer):
+                    other_text = st.text_input(
+                        "请填写其它内容",
+                        value=st.session_state.other_inputs.get(q['id'], ""),
+                        key=f"{q['id']}_other_input"
+                    )
+                    st.session_state.other_inputs[q['id']] = other_text
             elif q['type'] == 'multi':
                 # 多选题
                 selected = st.session_state.answers.get(q['id'], [])
@@ -326,6 +359,13 @@ def survey_interface():
                     elif option in selected:
                         selected.remove(option)
                 st.session_state.answers[q['id']] = selected
+                if any(is_other_option(option) for option in selected):
+                    other_text = st.text_input(
+                        "请填写其它内容",
+                        value=st.session_state.other_inputs.get(q['id'], ""),
+                        key=f"{q['id']}_other_input"
+                    )
+                    st.session_state.other_inputs[q['id']] = other_text
             
             # 导航按钮
             col1, col2 = st.columns(2)
@@ -364,10 +404,10 @@ def survey_interface():
                             answers = {}
                             for q in questions:
                                 if q['type'] == 'single':
-                                    answers[q['id']] = st.session_state.answers[q['id']]
+                                    answers[q['id']] = normalize_answer(q, st.session_state.answers[q['id']])
                                 elif q['type'] == 'multi':
                                     # 多选题保存为列表
-                                    answers[q['id']] = st.session_state.answers[q['id']]
+                                    answers[q['id']] = normalize_answer(q, st.session_state.answers[q['id']])
                             
                             # 添加提交时间到答案中
                             answers['submit_time'] = submit_time
