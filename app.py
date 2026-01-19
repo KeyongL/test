@@ -5,19 +5,38 @@ import os
 import sqlite3
 import json
 
+# 加载配置文件
+def load_config():
+    """加载问卷配置文件，不存在则返回None"""
+    try:
+        with open("survey_config.json", "r", encoding="utf-8") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return None
+    except json.JSONDecodeError:
+        return None
+
+CONFIG = load_config()
+
 # 设置页面配置
-st.set_page_config(
-    page_title="教学效率调研小助手",
-    page_icon="📚",
-    layout="centered"
-)
+if CONFIG and "app_config" in CONFIG:
+    st.set_page_config(
+        page_title=CONFIG["app_config"].get("title", "教学效率调研小助手"),
+        page_icon=CONFIG["app_config"].get("icon", "📚"),
+        layout="centered"
+    )
+else:
+    st.set_page_config(
+        page_title="教学效率调研小助手",
+        page_icon="📚",
+        layout="centered"
+    )
 
 # 数据库文件路径
 DB_FILE = "survey_data.db"
 
-# 定义问卷题目
-def get_questions():
-    return [
+# 定义问卷题目（默认回退）
+BASE_QUESTIONS = [
         # --- 基础画像 ---
         {
             "id": 'role_focus',
@@ -171,6 +190,12 @@ def get_questions():
             ]
         }
     ]
+
+# 读取配置中的问卷题目（优先使用配置文件）
+def get_questions():
+    if CONFIG and "questions" in CONFIG:
+        return CONFIG["questions"]
+    return BASE_QUESTIONS
 
 # 初始化数据库
 def init_database():
